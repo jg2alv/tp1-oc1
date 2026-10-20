@@ -1,34 +1,79 @@
-# Chip Happens: ADD decoding and execution in an educational RISC-V datapath
+# RISC Business: array checks and nested calculations in RISC-V assembly
 
-Chip Happens follows an instruction from its encoded fields to an arithmetic result. Within a team extension of supplied Verilog modules, I implemented the ADD path across instruction decoding and execution, connecting control signals to the operation they select.
+RISC Business brings two familiar algorithms down to registers, branches, word loads, and stack operations. One program checks whether an integer array is strictly increasing; the other calculates adjusted inventory totals through nested procedure calls.
 
 ## 1. Academic context and scope
 
 - **Institution:** Universidade Federal de Minas Gerais (UFMG)
 - **Degree:** Ciência da Computação
 - **Course:** Organização de Computadores 1
-- **Assignment:** Trabalho Prático 2
+- **Assignment:** Trabalho Prático 1
 - **Semester:** 2025-01
-- **Collaboration:** Team
 
-The repository separates an educational 32-bit RISC-V datapath into instruction fetching, decoding, execution, data memory, and writeback. My assigned instruction was register-based ADD. Other operations appear in the shared modules, but their presence does not make them part of my individual contribution or establish complete instruction-set support.
+`prob1.s` contains the sequence-checking procedure and an embedded verification harness. `prob2.s` contains inventory summation, price adjustment, an additional integer multiplier, and its harness. The work concerns low-level procedure implementation, rather than a general-purpose inventory application or an interactive command-line tool.
 
-The assignment uses a course-provided Google Colab notebook to integrate the Verilog modules, load machine code, and visualize processor state. This archive preserves the component files rather than that notebook environment.
+Both programs extend course-provided skeletons with procedure implementations inside the designated exercise regions.
 
-## 2. Implementation decisions
+## 2. How to run
 
-`decode.v` extracts the opcode, source and destination register indices, and function fields. Its control unit recognizes the register-register opcode, enables register writeback, and selects the ALU control class used for those instructions. The register bank supplies the operands through the decode interface.
+Use Venus, the 32-bit RISC-V simulator specified by the assignment:
 
-In `execute.v`, the operand multiplexer chooses between the second register operand and the generated immediate. ADD uses the register operand. The ALU control logic combines the instruction's function information with `aluop` to select addition, and the ALU maps that selection to `A + B`.
+1. Load [prob1.s](prob1.s) in the editor.
+2. Switch to the simulator and step through or run the program until `FIM`.
+3. Inspect `a0` after each procedure return and `s0` after the harness finishes.
+4. Reset the simulator and load [prob2.s](prob2.s) as a separate program; inspect the same registers.
 
-This division keeps instruction interpretation separate from the arithmetic expression. The important integration problem was making the decoding decision agree with operand selection and ALU control across module boundaries. An addition expression alone would not describe the instruction's full path through the design.
+Inputs are embedded in the assembly source. These programs do not read standard input or print a console transcript; their results are inspected through registers.
 
-## 3. Tests and evaluation
+## 3. Usage example
 
-The assignment's testing workflow uses Venus to assemble instruction-level tests, then loads the resulting hexadecimal machine code into the course notebook for visual inspection. For ADD, the relevant behavior is reading two register operands, generating their sum, and writing it to the destination register.
+The supplied arrays in `prob1.s` are:
 
-The archive contains no assembly test program or notebook output accompanying that workflow.
+```asm
+vetor1: .word 2, 3, 4
+vetor2: .word 1, 5, 4, 6, 8
+```
 
-## 4. Learning
+The harness calls `e_crescente` with the array address in `a0` and lengths three and five in `a1`. The procedure returns its Boolean result in `a0`.
 
-Following the same instruction across the decode and execute interfaces strengthened my understanding of hardware description languages, instruction encoding, and the relationship between control and datapath behavior. The exercise made a small arithmetic instruction concrete as a coordinated sequence of field extraction, operand routing, control selection, and result generation.
+The inventory data in `prob2.s` is:
+
+```asm
+lista_precos: .word 7, 5, 1
+fator_aumento: .word 3
+taxa_50: .word 2
+```
+
+Its harness checks the complete inventory, an individual price of three, and a tax-function input of two. Each successful comparison increments `s0`.
+
+## 4. Implementation decisions
+
+The sequence procedure compares adjacent word-sized values and advances its pointer by four bytes. A greater-than-or-equal comparison rejects both descending values and equal neighbors, preserving the distinction between strictly increasing and nondecreasing sequences. Lengths zero and one return success before the loop reads adjacent elements.
+
+The inventory program separates summation, adjustment, and multiplication into `soma_estoque`, `ajustar_preco`, and `aplicar_taxa`. Each procedure saves and restores its return address on the stack, allowing calls to nest without losing the caller's continuation. Explicit argument-register updates and array offsets expose responsibilities that higher-level function syntax usually hides.
+
+## 5. Tests and evaluation
+
+Both files contain comparisons against fixed expected values and increment `s0` when those comparisons succeed. They provide inspectable checks for the supplied cases, but do not establish broad edge-case coverage.
+
+### Verified results
+
+Reference output provided in the assignment, expressed as return-register values:
+
+| Program | Procedure and input | Expected `a0` |
+| --- | --- | --- |
+| `prob1.s` | `e_crescente`: `[2, 3, 4]`, length 3 | `1` |
+| `prob1.s` | `e_crescente`: `[1, 5, 4, 6, 8]`, length 5 | `0` |
+| `prob2.s` | `soma_estoque`: `[7, 5, 1]`, factors 3 and 2 | `78` |
+| `prob2.s` | `ajustar_preco`: value 3, factors 3 and 2 | `18` |
+| `prob2.s` | `aplicar_taxa`: value 2, multiplier 2 | `4` |
+
+If every supplied comparison succeeds, the harness finishes with `s0 = 2` for `prob1.s` and `s0 = 3` for `prob2.s`. The inventory reference follows `(7 + 5 + 1) * 3 * 2 = 78`.
+
+## 6. Learning and limitations
+
+The work strengthened my understanding of pointer arithmetic, conditional control flow, argument registers, and stack-based return-address preservation. Array boundaries and the order of nested calls were the main implementation concerns.
+
+The assignment's prose describes an additional 50% tax, but its constants and reference results use multiplication by two. The implementation follows those concrete examples rather than a general financial pricing model.
+
+Inputs and expected answers are embedded in the programs. The inventory routine retains intermediate values in temporary registers across calls and depends on the current callees leaving those registers untouched.
